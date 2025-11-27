@@ -1,8 +1,13 @@
 import sys
 import os
+import textwrap
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 import eliminar_innecesarios as ei
 import unittest
+
+def normalize_code(code: str) -> str:
+    """Elimina líneas vacías para comparar código sin importar el formato de líneas en blanco."""
+    return "\n".join([line for line in code.splitlines() if line.strip()])
 
 class EliminarInnecesariosTest(unittest.TestCase):
     def testInitCodeAnalyzer(self):
@@ -41,7 +46,8 @@ class EliminarInnecesariosTest(unittest.TestCase):
         analyzer.current_context = "otra_funcion"
         analyzer.visit_Call(call_node)
         self.assertNotIn("metodo", analyzer.used)
-        self.assertNotIn("metodo", analyzer.calls["otra_funcion"])
+        # Usar get para evitar KeyError si "otra_funcion" no fue creada
+        self.assertNotIn("metodo", analyzer.calls.get("otra_funcion", set()))
     
     def testVisitCall3(self): # current_context es None
         analyzer = ei.CodeAnalyzer()
@@ -80,49 +86,61 @@ class EliminarInnecesariosTest(unittest.TestCase):
         expanded = ei.expand_used_symbols(used, calls)
         self.assertEqual(expanded, set())
     
+
+
     def testKeepNodes1(self): # Mantiene solo la función usada
-        source = """def func_a():
-                        pass
-                    def func_b():
-                        pass
-                    class ClaseC:
-                        pass
-                    func_a()"""
+        source = textwrap.dedent("""
+            def func_a():
+                pass
+            def func_b():
+                pass
+            class ClaseC:
+                pass
+            func_a()
+        """).strip()
         tree = ei.ast.parse(source)
         used_syms = {"func_a"}
         new_tree = ei.keep_nodes(tree, used_syms)
         new_source = ei.ast.unparse(new_tree)
-        expected_source = """def func_a():
-                                pass
-                            func_a()"""
-        self.assertEqual(new_source.strip(), expected_source.strip())
+        expected_source = textwrap.dedent("""
+            def func_a():
+                pass
+            func_a()
+        """).strip()
+        self.assertEqual(normalize_code(new_source), normalize_code(expected_source))
     
     def testKeepNodes2(self): # Mantiene la clase usada y la función que llama a la clase
-        source = """def func_a():
-                        pass
-                    def func_b():
-                        instancia = ClaseC()
-                    class ClaseC:
-                        pass
-                    func_b()"""
+        source = textwrap.dedent("""
+            def func_a():
+                pass
+            def func_b():
+                instancia = ClaseC()
+            class ClaseC:
+                pass
+            func_b()
+        """).strip()
         tree = ei.ast.parse(source)
         used_syms = {"func_b", "ClaseC"}
         new_tree = ei.keep_nodes(tree, used_syms)
         new_source = ei.ast.unparse(new_tree)
-        expected_source = """def func_b():
-                                instancia = ClaseC()
-                            class ClaseC:
-                                pass
-                            func_b()"""
-        self.assertEqual(new_source.strip(), expected_source.strip())
+        expected_source = textwrap.dedent("""
+            def func_b():
+                instancia = ClaseC()
+            class ClaseC:
+                pass
+            func_b()
+        """).strip()
+        self.assertEqual(normalize_code(new_source), normalize_code(expected_source))
     
     def testKeepNodes3(self): # No mantiene nada si no se usa nada
-        source = """def func_a():
-                        pass
-                    def func_b():
-                        pass
-                    class ClaseC:
-                        pass"""
+        source = textwrap.dedent("""
+            def func_a():
+                pass
+            def func_b():
+                pass
+            class ClaseC:
+                pass
+        """).strip()
         tree = ei.ast.parse(source)
         used_syms: set[str] = set()
         new_tree = ei.keep_nodes(tree, used_syms)
