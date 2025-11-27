@@ -1,2 +1,5 @@
 .vscode/settings.json
 src/__pycache__/eliminar_innecesarios.cpython-313.pyc
+src/__pycache__/expand_imports.cpython-313.pyc
+test/__pycache__/test_eliminar_innecesarios.cpython-313.pyc
+*.pyc
