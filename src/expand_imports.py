@@ -378,5 +378,7 @@ if __name__ == "__main__":
         iteracion += 1
     if iteracion % 2 - 1 == 0:
         os.rename(temp1, output_path)
+        os.remove(temp2)
     else:
         os.rename(temp2, output_path)
+        os.remove(temp1)
