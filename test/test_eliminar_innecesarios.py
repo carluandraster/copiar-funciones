@@ -147,3 +147,35 @@ class EliminarInnecesariosTest(unittest.TestCase):
         new_source = ei.ast.unparse(new_tree)
         expected_source = ""
         self.assertEqual(new_source.strip(), expected_source.strip())
+    
+    def testEliminarInnecesarios(self):
+        source = textwrap.dedent("""
+            def func_a():
+                func_b()
+            def func_b():
+                pass
+            def func_c():
+                pass
+            class ClaseD:
+                pass
+            func_a()
+        """).strip()
+        with open("temp_test_file.py", "w", encoding="utf-8") as f:
+            f.write(source)
+        
+        ei.eliminar_innecesarios("temp_test_file.py", "temp_test_file.py")
+        
+        with open("temp_test_file.py", "r", encoding="utf-8") as f:
+            new_source = f.read().strip()
+        
+        expected_source = textwrap.dedent("""
+            def func_a():
+                func_b()
+            def func_b():
+                pass
+            func_a()
+        """).strip()
+        
+        self.assertEqual(normalize_code(new_source), normalize_code(expected_source))
+        
+        os.remove("temp_test_file.py")
