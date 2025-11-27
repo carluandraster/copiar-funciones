@@ -65,10 +65,10 @@ class CodeAnalyzer(ast.NodeVisitor):
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
             self.used.add(func_name)
-
             if self.current_context:
+                if self.current_context not in self.calls:
+                    self.calls[self.current_context] = set()
                 self.calls[self.current_context].add(func_name)
-
         self.generic_visit(node)
 
 def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]) -> Set[str]:
