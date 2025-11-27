@@ -100,7 +100,7 @@ def keep_nodes(tree: ast.Module, used_syms: Set[str]) -> ast.Module:
     new_body: list[ast.stmt] = []
 
     for node in tree.body:
-        if isinstance(node, ast.FunctionDef):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node.name in used_syms:
                 new_body.append(node)
 
@@ -126,7 +126,8 @@ def eliminar_innecesarios(input_path: str, output_path: str) -> None:
         source = f.read()
 
     tree = ast.parse(source)
-    analyzer = CodeAnalyzer().visit(tree)
+    analyzer = CodeAnalyzer()
+    analyzer.visit(tree)
 
     # Símbolos usados directamente o en el código principal
     used = set(analyzer.used)
