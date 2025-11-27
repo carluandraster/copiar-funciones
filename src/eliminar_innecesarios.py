@@ -1,6 +1,7 @@
 import ast
 import sys
 from typing import Set, Dict
+import asttokens
 
 class CodeAnalyzer(ast.NodeVisitor):
     """Analiza el código para encontrar funciones, clases y llamadas.
@@ -57,18 +58,19 @@ class CodeAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
         self.current_context = prev
 
-    def visit_Call(self, node: ast.Call) -> None:
-        """Registra una llamada a función o clase.
+    def visit_Name(self, node: ast.Name) -> None:
+        """Registra el uso de un nombre (variable, función, clase, import).
         
-        :param ast.Call node: Nodo AST que representa la llamada.
+        :param ast.Name node: Nodo AST que representa el nombre.
         """
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-            self.used.add(func_name)
+        if isinstance(node.ctx, ast.Load):
+            name = node.id
             if self.current_context:
                 if self.current_context not in self.calls:
                     self.calls[self.current_context] = set()
-                self.calls[self.current_context].add(func_name)
+                self.calls[self.current_context].add(name)
+            else:
+                self.used.add(name)
         self.generic_visit(node)
 
 def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]) -> Set[str]:
@@ -115,9 +117,8 @@ def keep_nodes(tree: ast.Module, used_syms: Set[str]) -> ast.Module:
     tree.body = new_body
     return tree
 
-
 def eliminar_innecesarios(input_path: str, output_path: str) -> None:
-    """Elimina funciones y clases innecesarias de un archivo Python.
+    """Elimina funciones, clases e imports innecesarios de un archivo Python.
     
     :param str input_path: Ruta del archivo de entrada.
     :param str output_path: Ruta del archivo de salida.
@@ -125,9 +126,10 @@ def eliminar_innecesarios(input_path: str, output_path: str) -> None:
     with open(input_path, "r", encoding="utf-8") as f:
         source = f.read()
 
-    tree = ast.parse(source)
+    atok = asttokens.ASTTokens(source, parse=True)
+    tree = atok.tree
     analyzer = CodeAnalyzer()
-    analyzer.visit(tree)
+    analyzer.visit(tree) # type: ignore
 
     # Símbolos usados directamente o en el código principal
     used = set(analyzer.used)
@@ -135,17 +137,58 @@ def eliminar_innecesarios(input_path: str, output_path: str) -> None:
     # Expandir por llamadas internas
     used = expand_used_symbols(used, analyzer.calls)
 
-    # Mantener solo funciones/clases necesarias
-    new_tree = keep_nodes(tree, used)
+    # Reconstruir el código manteniendo solo lo necesario, preservando comentarios
+    new_body: list[str] = []
+    last_category = None  # 'import', 'def', 'other'
+
+    for node in tree.body: # type: ignore
+        content = None
+        category = None
+
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in used:
+                content = atok.get_text(node) # type: ignore
+                category = 'def'
+        elif isinstance(node, ast.ClassDef):
+            if node.name in used:
+                content = atok.get_text(node) # type: ignore
+                category = 'def'
+        elif isinstance(node, ast.Import):
+            new_names = [alias for alias in node.names if (alias.asname or alias.name) in used]
+            if new_names:
+                node.names = new_names
+                content = ast.unparse(node)
+                category = 'import'
+        elif isinstance(node, ast.ImportFrom):
+            new_names = [alias for alias in node.names if (alias.asname or alias.name) in used]
+            if new_names:
+                node.names = new_names
+                content = ast.unparse(node)
+                category = 'import'
+        else:
+            # Código suelto siempre se conserva
+            content = atok.get_text(node) # type: ignore
+            category = 'other'
+
+        if content:
+            prefix = ""
+            # Separar funciones y clases con un salto de línea extra
+            if category == 'def':
+                prefix = "\n"
+            # Separar el código principal (main) de los imports o definiciones anteriores
+            elif category == 'other' and last_category in ('import', 'def'):
+                prefix = "\n"
+            
+            new_body.append(prefix + content)
+            last_category = category
 
     # Código limpio
-    cleaned = ast.unparse(new_tree)
+    cleaned = '\n'.join(new_body).strip()
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(cleaned)
 
-    print(f"Archivo generado sin código muerto: {output_path}")
-
+    print(f"Archivo limpio guardado en: {output_path}")
 
 # Ejemplo de uso:
 # eliminar_innecesarios("entrada.py", "salida_limpia.py")
