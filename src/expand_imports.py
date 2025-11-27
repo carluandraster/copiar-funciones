@@ -377,8 +377,8 @@ if __name__ == "__main__":
             quedan_librerias_propias = expand_imports(temp2, temp1)
         iteracion += 1
     if iteracion % 2 - 1 == 0:
-        os.rename(temp1, output_path)
+        os.replace(temp1, output_path)
         os.remove(temp2)
     else:
-        os.rename(temp2, output_path)
+        os.replace(temp2, output_path)
         os.remove(temp1)
