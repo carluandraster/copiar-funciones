@@ -24,7 +24,7 @@ class CodeAnalyzer(ast.NodeVisitor):
     - visit_Call(node): Registra una llamada a función o clase.
     """
     def __init__(self):
-        """Inicializa los conjuntos y el contexto actual. No recibe parámetros."""
+        """Inicializa los conjuntos como conjuntos vacíos y el contexto actual como None. No recibe parámetros."""
         self.functions: Set[str] = set()
         self.classes: Set[str] = set()
         self.calls: Dict[str, Set[str]] = {}
@@ -35,8 +35,6 @@ class CodeAnalyzer(ast.NodeVisitor):
         """Registra una definición de función.
         
         :param ast.FunctionDef node: Nodo AST que representa la definición de la función.
-        
-        :return: None
         """
         name = node.name
         self.functions.add(name)
@@ -50,8 +48,6 @@ class CodeAnalyzer(ast.NodeVisitor):
         """Registra una definición de clase.
         
         :param ast.ClassDef node: Nodo AST que representa la definición de la clase.
-        
-        :return: None
         """
         name = node.name
         self.classes.add(name)
@@ -65,8 +61,6 @@ class CodeAnalyzer(ast.NodeVisitor):
         """Registra una llamada a función o clase.
         
         :param ast.Call node: Nodo AST que representa la llamada.
-        
-        :return: None
         """
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
@@ -76,17 +70,6 @@ class CodeAnalyzer(ast.NodeVisitor):
                 self.calls[self.current_context].add(func_name)
 
         self.generic_visit(node)
-
-    def visit(self, node: ast.AST) -> "CodeAnalyzer":
-        """Visita un nodo AST y sus hijos.
-        
-        :param ast.AST node: Nodo AST a visitar.
-        
-        :return: La instancia del analizador de código.
-        """
-        super().visit(node)
-        return self
-
 
 def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]) -> Set[str]:
     """Expande el conjunto de símbolos usados siguiendo las llamadas internas.
