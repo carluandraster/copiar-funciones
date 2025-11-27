@@ -3,14 +3,41 @@ import sys
 from typing import Set, Dict
 
 class CodeAnalyzer(ast.NodeVisitor):
+    """Analiza el código para encontrar funciones, clases y llamadas.
+    
+    Atributos:
+    -----------
+    - functions (Set[str]): Conjunto de nombres de funciones definidas.
+    - classes (Set[str]): Conjunto de nombres de clases definidas.
+    - calls (Dict[str, Set[str]]): Mapa de funciones/clases a las que llaman.
+    - used (Set[str]): Conjunto de funciones/clases usadas directamente.
+    - current_context (str | None): Contexto actual (función o clase) durante la visita.
+    
+    Constructor:
+    --------------
+    __init__(): Inicializa los conjuntos y el contexto actual. No recibe parámetros.
+    
+    Métodos:
+    --------------
+    - visit_FunctionDef(node): Registra una definición de función.
+    - visit_ClassDef(node): Registra una definición de clase.
+    - visit_Call(node): Registra una llamada a función o clase.
+    """
     def __init__(self):
+        """Inicializa los conjuntos y el contexto actual. No recibe parámetros."""
         self.functions: Set[str] = set()
         self.classes: Set[str] = set()
         self.calls: Dict[str, Set[str]] = {}
         self.used: Set[str] = set()
         self.current_context = None
 
-    def visit_FunctionDef(self, node: ast.FunctionDef):
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Registra una definición de función.
+        
+        :param ast.FunctionDef node: Nodo AST que representa la definición de la función.
+        
+        :return: None
+        """
         name = node.name
         self.functions.add(name)
         self.calls[name] = set()
@@ -19,7 +46,13 @@ class CodeAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
         self.current_context = prev
 
-    def visit_ClassDef(self, node: ast.ClassDef):
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        """Registra una definición de clase.
+        
+        :param ast.ClassDef node: Nodo AST que representa la definición de la clase.
+        
+        :return: None
+        """
         name = node.name
         self.classes.add(name)
         self.calls[name] = set()
@@ -28,7 +61,13 @@ class CodeAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
         self.current_context = prev
 
-    def visit_Call(self, node: ast.Call):
+    def visit_Call(self, node: ast.Call) -> None:
+        """Registra una llamada a función o clase.
+        
+        :param ast.Call node: Nodo AST que representa la llamada.
+        
+        :return: None
+        """
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
             self.used.add(func_name)
@@ -38,12 +77,25 @@ class CodeAnalyzer(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-    def visit(self, node: ast.AST):
+    def visit(self, node: ast.AST) -> "CodeAnalyzer":
+        """Visita un nodo AST y sus hijos.
+        
+        :param ast.AST node: Nodo AST a visitar.
+        
+        :return: La instancia del analizador de código.
+        """
         super().visit(node)
         return self
 
 
-def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]):
+def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]) -> Set[str]:
+    """Expande el conjunto de símbolos usados siguiendo las llamadas internas.
+    
+    :param Set[str] used: Conjunto inicial de símbolos usados.
+    :param Dict[str, Set[str]] calls: Mapa de funciones/clases a las que llaman.
+    
+    :return: Conjunto expandido de símbolos usados.
+    """
     changed = True
     while changed:
         changed = False
@@ -55,8 +107,13 @@ def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]):
     return used
 
 
-def keep_nodes(tree: ast.Module, used_syms: Set[str]):
-    """Mantiene solo funciones y clases usadas."""
+def keep_nodes(tree: ast.Module, used_syms: Set[str]) -> ast.Module:
+    """Mantiene solo funciones y clases usadas.
+    
+    :param ast.Module tree: Árbol AST del módulo.
+    :param Set[str] used_syms: Conjunto de símbolos usados.
+    :return: Nuevo árbol AST con solo los nodos necesarios.
+    """
     new_body: list[ast.stmt] = []
 
     for node in tree.body:
@@ -76,7 +133,12 @@ def keep_nodes(tree: ast.Module, used_syms: Set[str]):
     return tree
 
 
-def eliminar_innecesarios(input_path: str, output_path: str):
+def eliminar_innecesarios(input_path: str, output_path: str) -> None:
+    """Elimina funciones y clases innecesarias de un archivo Python.
+    
+    :param str input_path: Ruta del archivo de entrada.
+    :param str output_path: Ruta del archivo de salida.
+    """
     with open(input_path, "r", encoding="utf-8") as f:
         source = f.read()
 
