@@ -86,8 +86,15 @@ class EliminarInnecesariosTest(unittest.TestCase):
         expanded = ei.expand_used_symbols(used, calls)
         self.assertEqual(expanded, set())
     
-
-
+    def testExpandUsedSymbols4(self):
+        used = {"Clase"}
+        calls: dict[str, set[str]] = {
+            "Clase": {"metodo_a"},
+            "metodo_a": set()
+        }
+        expanded = ei.expand_used_symbols(used, calls)
+        self.assertEqual(expanded, {"Clase", "metodo_a"})
+    
     def testKeepNodes1(self): # Mantiene solo la función usada
         source = textwrap.dedent("""
             def func_a():
@@ -148,7 +155,7 @@ class EliminarInnecesariosTest(unittest.TestCase):
         expected_source = ""
         self.assertEqual(new_source.strip(), expected_source.strip())
     
-    def testEliminarInnecesarios(self):
+    def testEliminarInnecesarios1(self):
         source = textwrap.dedent("""
             def func_a():
                 func_b()
@@ -179,3 +186,53 @@ class EliminarInnecesariosTest(unittest.TestCase):
         self.assertEqual(normalize_code(new_source), normalize_code(expected_source))
         
         os.remove("temp_test_file.py")
+    
+    def testEliminarInnecesarios2(self):
+        source = textwrap.dedent("""
+            def func_x():
+                pass
+            class ClaseY:
+                def metodo_z(self):
+                    pass
+                def metodo_w(self):
+                    func_x()
+            objY = ClaseY()
+            objY.metodo_w()
+        """).strip()
+        with open("temp_test_file2.py", "w", encoding="utf-8") as f:
+            f.write(source)
+        
+        ei.eliminar_innecesarios("temp_test_file2.py", "temp_test_file2.py")
+        
+        with open("temp_test_file2.py", "r", encoding="utf-8") as f:
+            new_source = f.read().strip()
+        print("Codigo resultante:")
+        print(new_source)
+        print("Codigo original:")
+        print(source)
+        self.assertEqual(normalize_code(new_source), normalize_code(source))
+        
+        os.remove("temp_test_file2.py")
+    
+    def testEliminarInnecesarios3(self):
+        source = textwrap.dedent("""
+            def func_x():
+                pass
+            class ClaseY:
+                def metodo_z(self):
+                    pass
+                def metodo_w(self):
+                    func_x()
+            objY = ClaseY()
+            objY.metodo_z()
+        """).strip()
+        with open("temp_test_file2.py", "w", encoding="utf-8") as f:
+            f.write(source)
+        
+        ei.eliminar_innecesarios("temp_test_file2.py", "temp_test_file2.py")
+        
+        with open("temp_test_file2.py", "r", encoding="utf-8") as f:
+            new_source = f.read().strip()
+            
+        os.remove("temp_test_file2.py")
+        self.assertEqual(normalize_code(new_source), normalize_code(source))

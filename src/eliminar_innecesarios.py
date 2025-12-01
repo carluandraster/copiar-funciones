@@ -5,64 +5,71 @@ import asttokens
 
 class CodeAnalyzer(ast.NodeVisitor):
     """Analiza el código para encontrar funciones, clases y llamadas.
-    
+
     Atributos:
-    -----------
     - functions (Set[str]): Conjunto de nombres de funciones definidas.
     - classes (Set[str]): Conjunto de nombres de clases definidas.
     - calls (Dict[str, Set[str]]): Mapa de funciones/clases a las que llaman.
     - used (Set[str]): Conjunto de funciones/clases usadas directamente.
     - current_context (str | None): Contexto actual (función o clase) durante la visita.
-    
-    Constructor:
-    --------------
-    __init__(): Inicializa los conjuntos y el contexto actual. No recibe parámetros.
-    
-    Métodos:
-    --------------
-    - visit_FunctionDef(node): Registra una definición de función.
-    - visit_ClassDef(node): Registra una definición de clase.
-    - visit_Call(node): Registra una llamada a función o clase.
+    - methods (Dict[str, Set[str]]): Mapa de clases a sus métodos.
+    - method_to_class (Dict[str, str]): Mapa de método -> clase para evitar colisiones de nombres.
     """
     def __init__(self):
-        """Inicializa los conjuntos como conjuntos vacíos y el contexto actual como None. No recibe parámetros."""
         self.functions: Set[str] = set()
         self.classes: Set[str] = set()
         self.calls: Dict[str, Set[str]] = {}
         self.used: Set[str] = set()
         self.current_context = None
+        self.methods: Dict[str, Set[str]] = {}
+        self.method_to_class: Dict[str, str] = {}
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """Registra una definición de función.
-        
-        :param ast.FunctionDef node: Nodo AST que representa la definición de la función.
-        """
         name = node.name
         self.functions.add(name)
-        self.calls[name] = set()
+        # inicializar conjunto de llamadas para la función/método
+        if name not in self.calls:
+            self.calls[name] = set()
+        # si estamos dentro de una clase, registrar método
+        if self.current_context and self.current_context in self.classes:
+            self.methods[self.current_context].add(name)
+            self.method_to_class[name] = self.current_context
         prev = self.current_context
         self.current_context = name
         self.generic_visit(node)
         self.current_context = prev
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        # tratar igual que FunctionDef
+        self.visit_FunctionDef(node)  # type: ignore
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        """Registra una definición de clase.
-        
-        :param ast.ClassDef node: Nodo AST que representa la definición de la clase.
-        """
         name = node.name
         self.classes.add(name)
-        self.calls[name] = set()
+        # inicializar estructura para la clase
+        if name not in self.calls:
+            self.calls[name] = set()
+        self.methods[name] = set()
         prev = self.current_context
         self.current_context = name
         self.generic_visit(node)
         self.current_context = prev
 
+    def visit_Call(self, node: ast.Call) -> None:
+        # Llamada a método (obj.method())
+        if isinstance(node.func, ast.Attribute):
+            method_name = node.func.attr
+            # marcar que se usa ese método (por nombre)
+            self.used.add(method_name)
+        # Llamada al constructor/clase C(...)
+        elif isinstance(node.func, ast.Name):
+            name = node.func.id
+            if name in self.classes:
+                # marcar uso de la clase (constructor)
+                self.used.add(name)
+        self.generic_visit(node)
+
     def visit_Name(self, node: ast.Name) -> None:
-        """Registra el uso de un nombre (variable, función, clase, import).
-        
-        :param ast.Name node: Nodo AST que representa el nombre.
-        """
         if isinstance(node.ctx, ast.Load):
             name = node.id
             if self.current_context:
@@ -72,6 +79,26 @@ class CodeAnalyzer(ast.NodeVisitor):
             else:
                 self.used.add(name)
         self.generic_visit(node)
+
+    def finalize(self) -> None:
+        """Post-procesa la información recolectada para que:
+        - Llamar a cualquier método de una clase incluya las llamadas hechas por todos los métodos
+          de esa misma clase.
+        - Llamar al constructor/usar la clase incluya las llamadas hechas por todos sus métodos.
+        Esto evita perder dependencias internas de la clase cuando se llama a solo un método.
+        """
+        # Para cada clase, obtener la unión de las llamadas de todos sus métodos
+        for cls, methods in self.methods.items():
+            union_calls: Set[str] = set()
+            for m in methods:
+                union_calls |= self.calls.get(m, set())
+            # la clase como símbolo también "llama" a esa unión (útil si se instancia la clase)
+            self.calls[cls] = self.calls.get(cls, set()) | union_calls
+            # además propagar esa unión a cada método concreto de la clase
+            for m in methods:
+                if m not in self.calls:
+                    self.calls[m] = set()
+                self.calls[m] |= union_calls
 
 def expand_used_symbols(used: Set[str], calls: Dict[str, Set[str]]) -> Set[str]:
     """Expande el conjunto de símbolos usados siguiendo las llamadas internas.
@@ -130,6 +157,7 @@ def eliminar_innecesarios(input_path: str, output_path: str) -> None:
     tree = atok.tree
     analyzer = CodeAnalyzer()
     analyzer.visit(tree) # type: ignore
+    analyzer.finalize()  # Agregar esta línea para aplicar el cambio de forma integral
 
     # Símbolos usados directamente o en el código principal
     used = set(analyzer.used)
